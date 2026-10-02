@@ -20,7 +20,7 @@ export interface Patient {
   gender: "M" | "F" | "Otro";
   phone: string | null;
   health_conditions: string | null;
-  status: "waiting" | "in_progress" | "attended" | "paid";
+  status: "waiting" | "in_progress" | "attended" | "paid" | "cancelled";
   queue_number: number;
   assigned_doctor_id: string | null;
   created_at: string;
