@@ -263,11 +263,9 @@ export default function RegistroPage() {
                     <span className={`px-2 py-1 rounded-full text-xs font-medium ${p.status === "waiting" ? "bg-yellow-100 text-yellow-800" : p.status === "in_progress" ? "bg-blue-100 text-blue-800" : p.status === "attended" ? "bg-green-100 text-green-800" : p.status === "cancelled" ? "bg-red-100 text-red-800" : "bg-gray-100 text-gray-800"}`}>
                       {statusLabel(p.status)}
                     </span>
+                    <button onClick={() => editPatient(p)} className="text-xs bg-blue-100 text-blue-700 px-2 py-1 rounded hover:bg-blue-200">Editar</button>
                     {p.status !== "paid" && p.status !== "cancelled" && (
-                      <>
-                        <button onClick={() => editPatient(p)} className="text-xs bg-blue-100 text-blue-700 px-2 py-1 rounded hover:bg-blue-200">Editar</button>
-                        <button onClick={() => cancelPatient(p.id, p.name)} className="text-xs bg-orange-100 text-orange-700 px-2 py-1 rounded hover:bg-orange-200">Cancelar</button>
-                      </>
+                      <button onClick={() => cancelPatient(p.id, p.name)} className="text-xs bg-orange-100 text-orange-700 px-2 py-1 rounded hover:bg-orange-200">Cancelar</button>
                     )}
                     <button onClick={() => deletePatient(p.id, p.name)} className="text-xs bg-red-100 text-red-700 px-2 py-1 rounded hover:bg-red-200">Eliminar</button>
                   </div>
