@@ -18,6 +18,7 @@ export default function RegistroPage() {
   const [loading, setLoading] = useState(false);
   const [success, setSuccess] = useState("");
   const [search, setSearch] = useState("");
+  const [editingId, setEditingId] = useState<string | null>(null);
 
   const fetchServices = useCallback(async () => {
     const { data } = await supabase
@@ -70,18 +71,39 @@ export default function RegistroPage() {
 
     setLoading(true);
     try {
-      const { data: patient, error } = await supabase.rpc("register_patient", {
-        p_name: form.name,
-        p_age: parseInt(form.age),
-        p_gender: form.gender,
-        p_phone: form.phone || null,
-        p_health_conditions: form.health_conditions || null,
-        p_service_ids: selectedServices,
-      });
+      if (editingId) {
+        await supabase
+          .from("patients")
+          .update({
+            name: form.name,
+            age: parseInt(form.age),
+            gender: form.gender,
+            phone: form.phone || null,
+            health_conditions: form.health_conditions || null,
+          })
+          .eq("id", editingId);
 
-      if (error) throw error;
+        await supabase.from("patient_services").delete().eq("patient_id", editingId);
+        for (const serviceId of selectedServices) {
+          await supabase.from("patient_services").insert({ patient_id: editingId, service_id: serviceId });
+        }
 
-      setSuccess(`Paciente registrado con número de cola: #${patient?.queue_number}`);
+        setSuccess("Paciente actualizado correctamente");
+        setEditingId(null);
+      } else {
+        const { data: patient, error } = await supabase.rpc("register_patient", {
+          p_name: form.name,
+          p_age: parseInt(form.age),
+          p_gender: form.gender,
+          p_phone: form.phone || null,
+          p_health_conditions: form.health_conditions || null,
+          p_service_ids: selectedServices,
+        });
+
+        if (error) throw error;
+        setSuccess(`Paciente registrado con número de cola: #${patient?.queue_number}`);
+      }
+
       setForm({ name: "", age: "", gender: "M", phone: "", health_conditions: "" });
       setSelectedServices([]);
       fetchRecentPatients();
@@ -92,6 +114,31 @@ export default function RegistroPage() {
     } finally {
       setLoading(false);
     }
+  };
+
+  const editPatient = async (patient: Patient) => {
+    setEditingId(patient.id);
+    setForm({
+      name: patient.name,
+      age: patient.age.toString(),
+      gender: patient.gender,
+      phone: patient.phone || "",
+      health_conditions: patient.health_conditions || "",
+    });
+
+    const { data: pServices } = await supabase
+      .from("patient_services")
+      .select("service_id")
+      .eq("patient_id", patient.id);
+
+    setSelectedServices((pServices || []).map((s) => s.service_id));
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  };
+
+  const cancelEdit = () => {
+    setEditingId(null);
+    setForm({ name: "", age: "", gender: "M", phone: "", health_conditions: "" });
+    setSelectedServices([]);
   };
 
   const cancelPatient = async (id: string, name: string) => {
@@ -129,9 +176,16 @@ export default function RegistroPage() {
           </div>
         )}
 
+        {editingId && (
+          <div className="bg-blue-100 border border-blue-400 text-blue-800 px-4 py-3 rounded mb-4 flex items-center justify-between">
+            <span>Editando paciente</span>
+            <button onClick={cancelEdit} className="text-blue-600 hover:text-blue-800 font-medium">Cancelar edición</button>
+          </div>
+        )}
+
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
           <form onSubmit={handleSubmit} className="bg-white rounded-xl shadow p-6">
-            <h2 className="text-lg font-semibold mb-4">Datos del Paciente</h2>
+            <h2 className="text-lg font-semibold mb-4">{editingId ? "Editar Paciente" : "Datos del Paciente"}</h2>
 
             <div className="space-y-4">
               <div>
@@ -180,7 +234,7 @@ export default function RegistroPage() {
               </div>
 
               <button type="submit" disabled={loading} className="w-full bg-blue-600 hover:bg-blue-700 disabled:bg-blue-400 text-white font-semibold py-3 rounded-lg transition-colors">
-                {loading ? "Registrando..." : "Registrar Paciente"}
+                {loading ? "Guardando..." : editingId ? "Guardar Cambios" : "Registrar Paciente"}
               </button>
             </div>
           </form>
@@ -190,7 +244,7 @@ export default function RegistroPage() {
             <div className="mb-4">
               <input
                 type="text"
-                placeholder="Buscar paciente para eliminar..."
+                placeholder="Buscar paciente para editar o eliminar..."
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
                 className="w-full border rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
@@ -210,7 +264,10 @@ export default function RegistroPage() {
                       {statusLabel(p.status)}
                     </span>
                     {p.status !== "paid" && p.status !== "cancelled" && (
-                      <button onClick={() => cancelPatient(p.id, p.name)} className="text-xs bg-orange-100 text-orange-700 px-2 py-1 rounded hover:bg-orange-200">Cancelar</button>
+                      <>
+                        <button onClick={() => editPatient(p)} className="text-xs bg-blue-100 text-blue-700 px-2 py-1 rounded hover:bg-blue-200">Editar</button>
+                        <button onClick={() => cancelPatient(p.id, p.name)} className="text-xs bg-orange-100 text-orange-700 px-2 py-1 rounded hover:bg-orange-200">Cancelar</button>
+                      </>
                     )}
                     <button onClick={() => deletePatient(p.id, p.name)} className="text-xs bg-red-100 text-red-700 px-2 py-1 rounded hover:bg-red-200">Eliminar</button>
                   </div>
