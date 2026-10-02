@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
+import Link from "next/link";
 import { supabase } from "@/lib/supabase";
 import type { Patient, Doctor } from "@/lib/types";
 
@@ -51,7 +52,13 @@ export default function ColaPage() {
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-900 to-blue-700 p-6 text-white">
       <div className="max-w-6xl mx-auto">
-        <div className="text-center mb-8">
+        <div className="text-center mb-8 relative">
+          <Link
+            href="/"
+            className="absolute top-0 left-0 bg-white/20 hover:bg-white/30 text-white px-4 py-2 rounded-lg text-sm transition-colors"
+          >
+            ← Volver al Sistema
+          </Link>
           <h1 className="text-4xl font-bold mb-2">Brigada Odontológica</h1>
           <p className="text-blue-200 text-xl">
             {currentTime.toLocaleDateString("es-HN", {
