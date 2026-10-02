@@ -204,6 +204,21 @@ export default function AdminPage() {
     fetchData();
   };
 
+  const editService = async (id: string, currentName: string, currentPrice: number) => {
+    const name = prompt("Nombre del servicio:", currentName);
+    if (!name) return;
+    const price = prompt("Precio (L.):", currentPrice.toString());
+    if (!price) return;
+    await supabase.from("services").update({ name, price: parseFloat(price) }).eq("id", id);
+    fetchData();
+  };
+
+  const deleteService = async (id: string, name: string) => {
+    if (!confirm(`¿Eliminar el servicio "${name}"?`)) return;
+    await supabase.from("services").delete().eq("id", id);
+    fetchData();
+  };
+
   const deletePatientAdmin = async (id: string, name: string) => {
     if (!confirm(`¿Eliminar a ${name}? Esta acción es permanente.`)) return;
     await supabase.from("patients").delete().eq("id", id);
@@ -420,12 +435,26 @@ export default function AdminPage() {
                     <span className="font-medium">{serv.name}</span>
                     <span className="ml-3 text-green-700 font-semibold">L. {serv.price.toFixed(2)}</span>
                   </div>
-                  <button
-                    onClick={() => toggleServiceActive(serv.id, serv.active)}
-                    className={`px-3 py-1 text-sm rounded ${serv.active ? "bg-green-100 text-green-700 hover:bg-green-200" : "bg-gray-100 text-gray-600 hover:bg-gray-200"}`}
-                  >
-                    {serv.active ? "Activo" : "Inactivo"}
-                  </button>
+                  <div className="flex gap-2">
+                    <button
+                      onClick={() => editService(serv.id, serv.name, serv.price)}
+                      className="px-3 py-1 text-sm bg-blue-100 text-blue-700 rounded hover:bg-blue-200"
+                    >
+                      Editar
+                    </button>
+                    <button
+                      onClick={() => toggleServiceActive(serv.id, serv.active)}
+                      className={`px-3 py-1 text-sm rounded ${serv.active ? "bg-green-100 text-green-700 hover:bg-green-200" : "bg-gray-100 text-gray-600 hover:bg-gray-200"}`}
+                    >
+                      {serv.active ? "Activo" : "Inactivo"}
+                    </button>
+                    <button
+                      onClick={() => deleteService(serv.id, serv.name)}
+                      className="px-3 py-1 text-sm bg-red-100 text-red-700 rounded hover:bg-red-200"
+                    >
+                      Eliminar
+                    </button>
+                  </div>
                 </div>
               ))}
             </div>
