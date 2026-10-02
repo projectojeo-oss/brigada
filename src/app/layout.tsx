@@ -4,6 +4,7 @@ import "./globals.css";
 export const metadata: Metadata = {
   title: "Brigada Odontológica - Sistema de Cola",
   description: "Sistema de gestión de pacientes para brigada odontológica",
+  charset: "utf-8",
 };
 
 export default function RootLayout({
