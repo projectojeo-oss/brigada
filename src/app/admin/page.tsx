@@ -9,7 +9,12 @@ interface ReportPatient extends Patient {
   payment?: Payment | null;
 }
 
+const ADMIN_PASSWORD = "brigada2024";
+
 export default function AdminPage() {
+  const [authenticated, setAuthenticated] = useState(false);
+  const [passwordInput, setPasswordInput] = useState("");
+  const [passwordError, setPasswordError] = useState(false);
   const [doctors, setDoctors] = useState<Doctor[]>([]);
   const [services, setServices] = useState<Service[]>([]);
   const [patients, setPatients] = useState<ReportPatient[]>([]);
@@ -237,6 +242,40 @@ export default function AdminPage() {
       p.name.toLowerCase().includes(deleteSearch.toLowerCase()) ||
       p.queue_number.toString().includes(deleteSearch)
   );
+
+  if (!authenticated) {
+    return (
+      <div className="min-h-screen flex items-center justify-center p-6">
+        <div className="bg-white rounded-xl shadow p-8 max-w-sm w-full">
+          <h2 className="text-xl font-bold text-purple-800 mb-4 text-center">Acceso restringido</h2>
+          <p className="text-sm text-gray-600 mb-4 text-center">Ingresa la contraseña de administrador</p>
+          <form onSubmit={(e) => {
+            e.preventDefault();
+            if (passwordInput === ADMIN_PASSWORD) {
+              setAuthenticated(true);
+              setPasswordError(false);
+            } else {
+              setPasswordError(true);
+            }
+          }}>
+            <input
+              type="password"
+              value={passwordInput}
+              onChange={(e) => setPasswordInput(e.target.value)}
+              placeholder="Contraseña"
+              className="w-full border rounded-lg px-3 py-2 mb-3 focus:ring-2 focus:ring-purple-500 focus:border-purple-500"
+            />
+            {passwordError && (
+              <p className="text-red-600 text-sm mb-3">Contraseña incorrecta</p>
+            )}
+            <button type="submit" className="w-full bg-purple-600 hover:bg-purple-700 text-white font-semibold py-2 rounded-lg transition-colors">
+              Entrar
+            </button>
+          </form>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen p-4 md:p-6">
