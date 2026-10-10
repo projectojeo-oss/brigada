@@ -39,7 +39,7 @@ export default function AdminPage() {
       supabase.from("services").select("*").order("name"),
       supabase
         .from("patients")
-        .select("*, attended_services(*, service:services(*)), payment:payments(*)")
+        .select("*, attended_services(*, service:services(*), doctor:doctors(*)), payment:payments(*)")
         .order("queue_number", { ascending: false }),
     ]);
 
@@ -59,11 +59,6 @@ export default function AdminPage() {
   }, [fetchData]);
 
   const filteredPatients = patients.filter((p) => {
-    if (filters.doctor && p.assigned_doctor_id !== filters.doctor) return false;
-    if (filters.service) {
-      const hasService = p.attended_services.some((s) => s.service_id === filters.service);
-      if (!hasService) return false;
-    }
     if (filters.gender && p.gender !== filters.gender) return false;
     if (filters.ageMin && p.age < parseInt(filters.ageMin)) return false;
     if (filters.ageMax && p.age > parseInt(filters.ageMax)) return false;
@@ -73,27 +68,87 @@ export default function AdminPage() {
     return true;
   });
 
-  const totalRevenue = filteredPatients.reduce((sum, p) => sum + (p.payment?.total || 0), 0);
+  interface ReportRow {
+    patient: ReportPatient;
+    svc: AttendedService | null;
+  }
+
+  const reportRows: ReportRow[] = [];
+  for (const p of filteredPatients) {
+    let svcs = p.attended_services;
+    if (filters.doctor) svcs = svcs.filter((s) => s.doctor_id === filters.doctor);
+    if (filters.service) svcs = svcs.filter((s) => s.service_id === filters.service);
+    const rowFiltering = !!(filters.doctor || filters.service);
+    if (svcs.length === 0) {
+      if (!rowFiltering && p.attended_services.length === 0) reportRows.push({ patient: p, svc: null });
+      continue;
+    }
+    for (const svc of svcs) reportRows.push({ patient: p, svc });
+  }
+
+  const summaryPatients = new Map<string, ReportPatient>();
+  for (const r of reportRows) summaryPatients.set(r.patient.id, r.patient);
+  const totalRevenue = Array.from(summaryPatients.values()).reduce(
+    (sum, p) => sum + (p.payment?.total || 0),
+    0
+  );
+
+  const genderLabel = (g: string) => (g === "M" ? "Masculino" : g === "F" ? "Femenino" : "Otro");
 
   const statusLabel = (s: string) =>
     s === "waiting" ? "En espera" : s === "in_progress" ? "En atención" : s === "attended" ? "Atendido" : s === "cancelled" ? "Cancelado" : "Pagado";
 
+  interface DoctorGroup {
+    label: string;
+    rows: ReportRow[];
+  }
+
+  const groupRowsByDoctor = (rows: ReportRow[]): DoctorGroup[] => {
+    const map = new Map<string, DoctorGroup>();
+    for (const r of rows) {
+      const label = r.svc?.doctor?.name || "(Sin doctor asignado)";
+      if (!map.has(label)) map.set(label, { label, rows: [] });
+      map.get(label)!.rows.push(r);
+    }
+    return Array.from(map.values()).sort((a, b) => {
+      if (a.label === "(Sin doctor asignado)") return 1;
+      if (b.label === "(Sin doctor asignado)") return -1;
+      return a.label.localeCompare(b.label);
+    });
+  };
+
   const exportCSV = () => {
-    const headers = ["Cola", "Nombre", "Edad", "Género", "Doctor", "Estado", "Servicios", "Total", "Pagado", "Cambio", "Fecha"];
-    const rows = filteredPatients.map((p) => [
-      p.queue_number,
-      p.name,
-      p.age,
-      p.gender === "M" ? "Masculino" : p.gender === "F" ? "Femenino" : "Otro",
-      p.assigned_doctor?.name || "",
-      statusLabel(p.status),
-      p.attended_services.map((s) => s.service?.name).join(", "),
-      p.payment?.total?.toFixed(2) || "0.00",
-      p.payment?.amount_paid?.toFixed(2) || "0.00",
-      p.payment?.change_amount?.toFixed(2) || "0.00",
-      new Date(p.created_at).toLocaleString("es-HN"),
-    ]);
-    const csv = [headers, ...rows].map((r) => r.map((c) => `"${c}"`).join(",")).join("\n");
+    const esc = (c: unknown) => `"${String(c ?? "")}"`;
+    const groups = groupRowsByDoctor(reportRows);
+    const lines: string[] = [];
+    for (const g of groups) {
+      lines.push([esc("Encargado"), esc(g.label)].join(","));
+      lines.push(
+        ["Cola", "Nombre", "Edad", "Género", "Servicio", "Estado", "Total", "Fecha"].map(esc).join(",")
+      );
+      const seen = new Set<string>();
+      for (const r of g.rows) {
+        const p = r.patient;
+        const first = !seen.has(p.id);
+        seen.add(p.id);
+        lines.push(
+          [
+            p.queue_number,
+            p.name,
+            p.age,
+            genderLabel(p.gender),
+            r.svc?.service?.name || "-",
+            statusLabel(p.status),
+            first && p.payment ? p.payment.total.toFixed(2) : "",
+            new Date(p.created_at).toLocaleString("es-HN"),
+          ]
+            .map(esc)
+            .join(",")
+        );
+      }
+      lines.push("");
+    }
+    const csv = lines.join("\n");
     const blob = new Blob(["\uFEFF" + csv], { type: "text/csv;charset=utf-8;" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
@@ -103,22 +158,50 @@ export default function AdminPage() {
   };
 
   const exportPDF = () => {
-    const filtered = filteredPatients;
+    const groups = groupRowsByDoctor(reportRows);
     const win = window.open("", "_blank");
     if (!win) return;
 
-    const tableRows = filtered.map((p) => `
+    const groupHtml = groups
+      .map((g) => {
+        const seen = new Set<string>();
+        const tableRows = g.rows
+          .map((r) => {
+            const p = r.patient;
+            const first = !seen.has(p.id);
+            seen.add(p.id);
+            return `
       <tr>
         <td>${p.queue_number}</td>
         <td>${p.name}</td>
         <td>${p.age}</td>
         <td>${p.gender === "M" ? "Masc." : p.gender === "F" ? "Fem." : "Otro"}</td>
-        <td>${p.assigned_doctor?.name || "-"}</td>
+        <td>${r.svc?.service?.name || "-"}</td>
         <td>${statusLabel(p.status)}</td>
-        <td style="font-size:10px;">${p.attended_services.map((s) => s.service?.name).join(", ") || "-"}</td>
-        <td style="font-weight:600;">L. ${(p.payment?.total || 0).toFixed(2)}</td>
-      </tr>
-    `).join("");
+        <td style="font-weight:600;">${first && p.payment ? "L. " + p.payment.total.toFixed(2) : "-"}</td>
+      </tr>`;
+          })
+          .join("");
+        return `
+        <div class="group">
+          <h2>Encargado: ${g.label}</h2>
+          <table>
+            <thead>
+              <tr>
+                <th>#</th>
+                <th>Nombre</th>
+                <th>Edad</th>
+                <th>Género</th>
+                <th>Servicio</th>
+                <th>Estado</th>
+                <th>Total</th>
+              </tr>
+            </thead>
+            <tbody>${tableRows}</tbody>
+          </table>
+        </div>`;
+      })
+      .join("");
 
     win.document.write(`
       <!DOCTYPE html>
@@ -133,6 +216,8 @@ export default function AdminPage() {
           .header p { color: #6b7280; font-size: 14px; }
           .summary { background: #eff6ff; border-radius: 8px; padding: 16px; margin-bottom: 20px; text-align: center; }
           .summary strong { color: #1e40af; }
+          .group { margin-bottom: 28px; page-break-inside: avoid; }
+          .group h2 { color: #1e40af; font-size: 16px; margin-bottom: 8px; border-left: 4px solid #1e40af; padding-left: 8px; }
           table { width: 100%; border-collapse: collapse; font-size: 12px; }
           th { background: #1e40af; color: white; padding: 10px 8px; text-align: left; }
           td { padding: 8px; border-bottom: 1px solid #e5e7eb; }
@@ -148,25 +233,9 @@ export default function AdminPage() {
           <p>Generado: ${new Date().toLocaleTimeString("es-HN")}</p>
         </div>
         <div class="summary">
-          <strong>${filtered.length}</strong> pacientes · Ingresos totales: <strong>L. ${filtered.reduce((s, p) => s + (p.payment?.total || 0), 0).toFixed(2)}</strong>
+          <strong>${summaryPatients.size}</strong> pacientes · Ingresos totales: <strong>L. ${totalRevenue.toFixed(2)}</strong>
         </div>
-        <table>
-          <thead>
-            <tr>
-              <th>#</th>
-              <th>Nombre</th>
-              <th>Edad</th>
-              <th>Género</th>
-              <th>Doctor</th>
-              <th>Estado</th>
-              <th>Servicios</th>
-              <th>Total</th>
-            </tr>
-          </thead>
-          <tbody>
-            ${tableRows}
-          </tbody>
-        </table>
+        ${groupHtml}
         <div class="footer">
           Sistema de Gestión de Cola - Brigada Odontológica
         </div>
@@ -307,7 +376,7 @@ export default function AdminPage() {
               <h2 className="text-lg font-semibold mb-4">Filtros</h2>
               <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                 <div>
-                  <label className="block text-sm text-gray-600 mb-1">Doctor</label>
+                  <label className="block text-sm text-gray-600 mb-1">Doctor que atendió</label>
                   <select value={filters.doctor} onChange={(e) => setFilters({ ...filters, doctor: e.target.value })} className="w-full border rounded-lg px-3 py-2">
                     <option value="">Todos</option>
                     {doctors.map((d) => (
@@ -371,7 +440,7 @@ export default function AdminPage() {
                 <div>
                   <h2 className="text-lg font-semibold">Resultados</h2>
                   <p className="text-sm text-gray-500">
-                    {filteredPatients.length} pacientes · Ingresos totales:{" "}
+                    {summaryPatients.size} pacientes · Ingresos totales:{" "}
                     <span className="font-bold text-green-700">L. {totalRevenue.toFixed(2)}</span>
                   </p>
                 </div>
@@ -394,33 +463,39 @@ export default function AdminPage() {
                       <th className="text-left py-2 px-2">Edad</th>
                       <th className="text-left py-2 px-2">Género</th>
                       <th className="text-left py-2 px-2">Doctor</th>
+                      <th className="text-left py-2 px-2">Servicio</th>
                       <th className="text-left py-2 px-2">Estado</th>
-                      <th className="text-left py-2 px-2">Servicios</th>
                       <th className="text-right py-2 px-2">Total</th>
                     </tr>
                   </thead>
                   <tbody>
-                    {filteredPatients.slice(0, 100).map((p) => (
-                      <tr key={p.id} className="border-b hover:bg-gray-50">
-                        <td className="py-2 px-2">{p.queue_number}</td>
-                        <td className="py-2 px-2 font-medium">{p.name}</td>
-                        <td className="py-2 px-2">{p.age}</td>
-                        <td className="py-2 px-2">{p.gender === "M" ? "Masc." : p.gender === "F" ? "Fem." : "Otro"}</td>
-                        <td className="py-2 px-2">{p.assigned_doctor?.name || "-"}</td>
-                        <td className="py-2 px-2">
-                          <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${p.status === "waiting" ? "bg-yellow-100 text-yellow-800" : p.status === "in_progress" ? "bg-blue-100 text-blue-800" : p.status === "attended" ? "bg-green-100 text-green-800" : p.status === "cancelled" ? "bg-red-100 text-red-800" : "bg-gray-100 text-gray-800"}`}>
-                            {statusLabel(p.status)}
-                          </span>
-                        </td>
-                        <td className="py-2 px-2 text-xs">{p.attended_services.map((s) => s.service?.name).join(", ") || "-"}</td>
-                        <td className="py-2 px-2 text-right font-medium">L. {(p.payment?.total || 0).toFixed(2)}</td>
-                      </tr>
-                    ))}
+                    {reportRows.slice(0, 100).map((r, i) => {
+                      const p = r.patient;
+                      const firstRow = i === 0 || reportRows[i - 1].patient.id !== p.id;
+                      return (
+                        <tr key={`${p.id}-${r.svc?.id || "none"}`} className="border-b hover:bg-gray-50">
+                          <td className="py-2 px-2">{p.queue_number}</td>
+                          <td className="py-2 px-2 font-medium">{p.name}</td>
+                          <td className="py-2 px-2">{p.age}</td>
+                          <td className="py-2 px-2">{p.gender === "M" ? "Masc." : p.gender === "F" ? "Fem." : "Otro"}</td>
+                          <td className="py-2 px-2">{r.svc?.doctor?.name || "-"}</td>
+                          <td className="py-2 px-2">{r.svc?.service?.name || "-"}</td>
+                          <td className="py-2 px-2">
+                            <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${p.status === "waiting" ? "bg-yellow-100 text-yellow-800" : p.status === "in_progress" ? "bg-blue-100 text-blue-800" : p.status === "attended" ? "bg-green-100 text-green-800" : p.status === "cancelled" ? "bg-red-100 text-red-800" : "bg-gray-100 text-gray-800"}`}>
+                              {statusLabel(p.status)}
+                            </span>
+                          </td>
+                          <td className="py-2 px-2 text-right font-medium">
+                            {firstRow && p.payment ? `L. ${p.payment.total.toFixed(2)}` : "-"}
+                          </td>
+                        </tr>
+                      );
+                    })}
                   </tbody>
                 </table>
-                {filteredPatients.length > 100 && (
+                {reportRows.length > 100 && (
                   <p className="text-center text-sm text-gray-400 py-2">
-                    Mostrando 100 de {filteredPatients.length} resultados. Exporta CSV o PDF para ver todos.
+                    Mostrando 100 de {reportRows.length} registros (pacientes con varios servicios aparecen más de una vez). Exporta CSV o PDF para ver todos.
                   </p>
                 )}
               </div>

@@ -153,6 +153,15 @@ export default function RegistroPage() {
     fetchRecentPatients();
   };
 
+  const reopenPatient = async (id: string, name: string) => {
+    if (!confirm(`¿Reabrir a ${name}? Volverá a la cola para otro servicio. Los servicios ya realizados se conservan.`)) return;
+    await supabase
+      .from("patients")
+      .update({ status: "waiting", assigned_doctor_id: null })
+      .eq("id", id);
+    fetchRecentPatients();
+  };
+
   const filteredPatients = recentPatients.filter(
     (p) =>
       p.name.toLowerCase().includes(search.toLowerCase()) ||
@@ -264,6 +273,9 @@ export default function RegistroPage() {
                       {statusLabel(p.status)}
                     </span>
                     <button onClick={() => editPatient(p)} className="text-xs bg-blue-100 text-blue-700 px-2 py-1 rounded hover:bg-blue-200">Editar</button>
+                    {p.status === "attended" && (
+                      <button onClick={() => reopenPatient(p.id, p.name)} className="text-xs bg-purple-100 text-purple-700 px-2 py-1 rounded hover:bg-purple-200">Reabrir</button>
+                    )}
                     {p.status !== "paid" && p.status !== "cancelled" && (
                       <button onClick={() => cancelPatient(p.id, p.name)} className="text-xs bg-orange-100 text-orange-700 px-2 py-1 rounded hover:bg-orange-200">Cancelar</button>
                     )}

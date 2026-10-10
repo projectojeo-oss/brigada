@@ -42,9 +42,13 @@ CREATE TABLE IF NOT EXISTS attended_services (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   patient_id UUID NOT NULL REFERENCES patients(id) ON DELETE CASCADE,
   service_id UUID NOT NULL REFERENCES services(id),
+  doctor_id UUID REFERENCES doctors(id),
   created_at TIMESTAMPTZ DEFAULT NOW(),
   UNIQUE(patient_id, service_id)
 );
+
+-- Migración para bases de datos existentes (ejecutar en Supabase SQL Editor)
+ALTER TABLE attended_services ADD COLUMN IF NOT EXISTS doctor_id UUID REFERENCES doctors(id);
 
 CREATE TABLE IF NOT EXISTS payments (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),

@@ -13,6 +13,7 @@ export default function AsistentePage() {
   const [allServices, setAllServices] = useState<Service[]>([]);
   const [loading, setLoading] = useState(false);
   const [nextInQueue, setNextInQueue] = useState<Patient[]>([]);
+  const [showTransfer, setShowTransfer] = useState(false);
 
   const fetchDoctors = useCallback(async () => {
     const { data } = await supabase.from("doctors").select("*").order("name");
@@ -55,7 +56,7 @@ export default function AsistentePage() {
 
       const { data: aServices } = await supabase
         .from("attended_services")
-        .select("*, service:services(*)")
+        .select("*, service:services(*), doctor:doctors(*)")
         .eq("patient_id", patient.id);
       setAttendedServices((aServices as AttendedService[]) || []);
     } else {
@@ -141,10 +142,29 @@ export default function AsistentePage() {
     } else {
       await supabase
         .from("attended_services")
-        .insert({ patient_id: currentPatient.id, service_id: serviceId });
+        .insert({ patient_id: currentPatient.id, service_id: serviceId, doctor_id: selectedDoctorId });
     }
 
     fetchCurrentPatient();
+  };
+
+  const transferToDoctor = async (newDoctorId: string) => {
+    if (!currentPatient || !selectedDoctorId || newDoctorId === selectedDoctorId) return;
+
+    setLoading(true);
+
+    await supabase
+      .from("patients")
+      .update({ assigned_doctor_id: newDoctorId, status: "in_progress" })
+      .eq("id", currentPatient.id);
+
+    await supabase.from("doctors").update({ status: "available" }).eq("id", selectedDoctorId);
+    await supabase.from("doctors").update({ status: "occupied" }).eq("id", newDoctorId);
+
+    setShowTransfer(false);
+    setLoading(false);
+
+    await Promise.all([fetchCurrentPatient(), fetchNextInQueue(), fetchDoctors()]);
   };
 
   const markAsAttended = async () => {
@@ -270,6 +290,11 @@ export default function AsistentePage() {
                               Solicitado
                             </span>
                           )}
+                          {isAttended && (
+                            <span className="text-xs bg-green-100 text-green-700 px-2 py-0.5 rounded">
+                              {attendedServices.find((s) => s.service_id === service.id)?.doctor?.name || "Atendido"}
+                            </span>
+                          )}
                         </div>
                         <span className="text-green-700 font-semibold">
                           L. {service.price.toFixed(2)}
@@ -286,13 +311,60 @@ export default function AsistentePage() {
                   </span>
                 </div>
 
-                <button
-                  onClick={markAsAttended}
-                  disabled={loading || attendedServices.length === 0}
-                  className="w-full mt-4 bg-green-600 hover:bg-green-700 disabled:bg-green-400 text-white font-semibold py-3 rounded-lg transition-colors"
-                >
-                  {loading ? "Procesando..." : "✓ Marcar como Atendido"}
-                </button>
+                <div className="mt-4 space-y-2">
+                  <button
+                    onClick={markAsAttended}
+                    disabled={loading || attendedServices.length === 0}
+                    className="w-full bg-green-600 hover:bg-green-700 disabled:bg-green-400 text-white font-semibold py-3 rounded-lg transition-colors"
+                  >
+                    {loading ? "Procesando..." : "✓ Finalizar y enviar a Cobros"}
+                  </button>
+                  <button
+                    onClick={() => setShowTransfer(!showTransfer)}
+                    disabled={loading}
+                    className="w-full bg-amber-500 hover:bg-amber-600 disabled:bg-amber-300 text-white font-semibold py-3 rounded-lg transition-colors"
+                  >
+                    → Pasar a otro doctor
+                  </button>
+                </div>
+
+                {showTransfer && (
+                  <div className="mt-3 p-4 bg-amber-50 border border-amber-200 rounded-lg">
+                    <p className="text-sm font-medium text-amber-800 mb-1">
+                      ¿Con qué doctor continuará {currentPatient.name}?
+                    </p>
+                    <p className="text-xs text-amber-600 mb-3">
+                      Los servicios ya realizados se conservan con el doctor que los hizo.
+                    </p>
+                    <div className="flex flex-wrap gap-2">
+                      {doctors
+                        .filter((d) => d.id !== selectedDoctorId)
+                        .map((doc) => (
+                          <button
+                            key={doc.id}
+                            onClick={() => transferToDoctor(doc.id)}
+                            disabled={loading || doc.status === "occupied"}
+                            className={`px-4 py-2 rounded-lg font-medium transition-colors ${
+                              doc.status === "occupied"
+                                ? "bg-gray-200 text-gray-400 cursor-not-allowed"
+                                : "bg-amber-600 hover:bg-amber-700 text-white"
+                            }`}
+                          >
+                            {doc.name}
+                            <span className="ml-2 text-xs">
+                              {doc.status === "occupied" ? "· Ocupado" : "· Disponible"}
+                            </span>
+                          </button>
+                        ))}
+                    </div>
+                    <button
+                      onClick={() => setShowTransfer(false)}
+                      className="mt-3 text-sm text-gray-500 hover:text-gray-700 underline"
+                    >
+                      Cancelar
+                    </button>
+                  </div>
+                )}
               </div>
             </div>
 

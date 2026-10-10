@@ -39,8 +39,10 @@ export interface AttendedService {
   id: string;
   patient_id: string;
   service_id: string;
+  doctor_id: string | null;
   created_at: string;
   service?: Service;
+  doctor?: Doctor | null;
 }
 
 export interface Payment {
