@@ -84,9 +84,9 @@ export default function ColaPage() {
                   key={p.id}
                   className="bg-white/20 rounded-xl p-4 text-center"
                 >
-                  <div className="text-3xl font-bold">#{p.queue_number}</div>
-                  <div className="text-xl font-semibold">{p.name}</div>
-                  <div className="text-blue-200 mt-1">
+                  <div className="text-4xl font-bold">#{p.queue_number}</div>
+                  <div className="text-4xl font-bold mt-1">{p.name}</div>
+                  <div className="text-blue-200 text-xl mt-1">
                     con {p.assigned_doctor?.name || "doctor asignado"}
                   </div>
                 </div>
@@ -107,21 +107,21 @@ export default function ColaPage() {
               {waitingPatients.slice(0, 10).map((p, i) => (
                 <div
                   key={p.id}
-                  className={`flex items-center gap-4 p-3 rounded-xl ${
+                  className={`flex items-center gap-4 p-4 rounded-xl ${
                     i === 0 ? "bg-yellow-400/30" : "bg-white/10"
                   }`}
                 >
-                  <div className="text-2xl font-bold w-12 text-center">
+                  <div className="text-4xl font-bold w-20 text-center">
                     #{p.queue_number}
                   </div>
                   <div className="flex-1">
-                    <div className="font-semibold">{p.name}</div>
-                    <div className="text-sm text-blue-200">
+                    <div className="text-3xl font-bold">{p.name}</div>
+                    <div className="text-lg text-blue-200">
                       {p.age} años
                     </div>
                   </div>
                   {i === 0 && (
-                    <span className="bg-yellow-400 text-yellow-900 px-3 py-1 rounded-full text-sm font-bold">
+                    <span className="bg-yellow-400 text-yellow-900 px-4 py-1.5 rounded-full text-lg font-bold">
                       Siguiente
                     </span>
                   )}
